@@ -3,6 +3,41 @@ import db from '../database';
 
 const router = Router();
 
+/** 常见缩写展开 */
+const ABBREVIATIONS: Record<string, string> = {
+  sth: 'something', sb: 'somebody', sbd: 'somebody',
+  etc: 'etcetera', vs: 'versus', dept: 'department',
+  info: 'information', app: 'application', ad: 'advertisement',
+  exam: 'examination', phone: 'telephone', bike: 'bicycle',
+  math: 'mathematics', gym: 'gymnasium', lab: 'laboratory',
+  photo: 'photograph', tv: 'television',
+}
+
+function expandAbbreviations(text: string): string {
+  return text.split(/\s+/).map(w => {
+    const clean = w.replace(/[^a-zA-Z]/g, '').toLowerCase()
+    return ABBREVIATIONS[clean] || w
+  }).join(' ')
+}
+
+/** 展开 "/" 替代项： "a/the secret" → ["a secret", "the secret"] */
+function expandAlternatives(text: string): string[] {
+  text = expandAbbreviations(text)
+  const tokens = text.split(/\s+/);
+  const parts = tokens.map(t => t.includes('/') ? t.split('/') : [t]);
+
+  function combine(arrays: string[][], index: number, current: string[]): string[] {
+    if (index === arrays.length) return [current.join(' ')];
+    const results: string[] = [];
+    for (const item of arrays[index]) {
+      results.push(...combine(arrays, index + 1, [...current, item]));
+    }
+    return results;
+  }
+
+  return combine(parts, 0, []);
+}
+
 // POST /api/practice/start - Start a new practice session
 router.post('/start', (req: Request, res: Response) => {
   const { word_list_id, mode = 'full' } = req.body;
@@ -89,10 +124,11 @@ router.post('/answer', (req: Request, res: Response) => {
     return res.status(404).json({ error: '单词不存在' });
   }
 
-  // Check if answer is correct (case-insensitive, trim whitespace)
-  const userAnswerClean = String(user_answer).trim().toLowerCase();
-  const correctAnswerClean = word.english.trim().toLowerCase();
-  const isCorrect = userAnswerClean === correctAnswerClean;
+  // Check if answer matches — support "/" alternatives like "a/the secret"
+  const userClean = String(user_answer).replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const isCorrect = expandAlternatives(word.english).some(
+    alt => alt.replace(/[^a-zA-Z]/g, '').toLowerCase() === userClean
+  );
 
   // Record the result
   db.prepare(`

@@ -10,6 +10,12 @@
       <span class="progress-num">{{ store.completedCount }}/{{ store.totalWords }}</span>
     </div>
 
+    <!-- 上一个/下一个 切换 -->
+    <div class="nav-arrows" v-if="store.currentWord && !store.isComplete && !showingResult">
+      <button class="arrow-btn" :disabled="store.currentIndex === 0" @click="goToWord(store.currentIndex - 1)">◀</button>
+      <button class="arrow-btn" :disabled="store.currentIndex >= store.totalWords - 1" @click="goToWord(store.currentIndex + 1)">▶</button>
+    </div>
+
     <!-- 中文单词 -->
     <div class="word-zone" v-if="store.currentWord && !store.isComplete && !showingResult">
       <div class="word-chinese" :key="store.currentWord.id">{{ store.currentWord.chinese }}</div>
@@ -55,6 +61,15 @@
             → 匹配为 {{ lastResult.user_answer }}
           </span>
         </div>
+        <!-- 发音得分 -->
+        <div v-if="inputMode === 'voice'" class="result-score">
+          <div class="score-ring" :style="{ '--pct': pronunciationScore / 100 }">
+            <span class="score-num">{{ pronunciationScore }}</span>
+          </div>
+          <span class="score-label">发音分</span>
+        </div>
+        <!-- 录音回放 -->
+        <audio v-if="recordedAudio" :src="recordedAudio" controls class="audio-player" @click.stop></audio>
         <div class="result-action-hint" v-if="!lastResult.is_correct">
           点击重试 · 双击跳过
         </div>
@@ -119,6 +134,33 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 let recognition: SpeechRecognition | null = null
 let restartCount = 0
+
+// 录音
+let mediaRecorder: MediaRecorder | null = null
+let audioChunks: Blob[] = []
+const recordedAudio = ref<string | null>(null)
+const pronunciationScore = ref(0)
+
+async function startMediaRecorder() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder = new MediaRecorder(stream)
+    audioChunks = []
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' })
+      if (recordedAudio.value) URL.revokeObjectURL(recordedAudio.value)
+      recordedAudio.value = URL.createObjectURL(blob)
+    }
+    mediaRecorder.start()
+  } catch { /* 权限问题静默失败 */ }
+}
+
+function stopMediaRecorder() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop()
+  }
+}
 
 onMounted(() => {
   document.documentElement.style.overflow = 'hidden'
@@ -199,7 +241,7 @@ const accuracyEmoji = computed(() => {
 
 // ===== 回答逻辑 =====
 function normalizeAnswer(input: string): string {
-  return input.replace(/[^a-zA-Z]/g, '').toLowerCase()
+  return expandAbbrs(input).replace(/[^a-zA-Z]/g, '').toLowerCase()
 }
 
 function isSpellFormat(input: string): boolean {
@@ -225,10 +267,13 @@ function toggleRecording() {
   if (!recognition) { alert('请使用 Chrome 浏览器'); return }
   if (isRecording.value) {
     recognition.stop()
+    stopMediaRecorder()
   } else {
     restartCount = 0
     window.speechSynthesis.cancel()
     isRecording.value = true
+    recordedAudio.value = null
+    startMediaRecorder()
     recognition.start()
   }
 }
@@ -284,28 +329,58 @@ function handleVoiceResult(result: SpeechRecognitionResult) {
   })
 }
 
+/** 常见缩写 → 全称 */
+const ABBREVIATIONS: Record<string, string> = {
+  sth: 'something', sb: 'somebody', sbd: 'somebody',
+  etc: 'etcetera', vs: 'versus', dept: 'department',
+  info: 'information', app: 'application', ad: 'advertisement',
+  exam: 'examination', phone: 'telephone', bike: 'bicycle',
+  math: 'mathematics', gym: 'gymnasium', lab: 'laboratory',
+  photo: 'photograph', tv: 'television',
+}
+function expandAbbrs(text: string): string {
+  return text.split(/\s+/).map(w => {
+    const clean = w.replace(/[^a-zA-Z]/g, '').toLowerCase()
+    return ABBREVIATIONS[clean] || w
+  }).join(' ')
+}
+
+/** 展开 "/" 替代项 */
+function expandAlternatives(text: string): string[] {
+  text = expandAbbrs(text)
+  const tokens = text.split(/\s+/)
+  const parts = tokens.map(t => t.includes('/') ? t.split('/') : [t])
+  function combine(arrays: string[][], i: number, cur: string[]): string[] {
+    if (i === arrays.length) return [cur.join(' ')]
+    const r: string[] = []
+    for (const item of arrays[i]) r.push(...combine(arrays, i + 1, [...cur, item]))
+    return r
+  }
+  return combine(parts, 0, [])
+}
+
 /** 在候选识别结果中选最接近目标单词的 */
 function pickBestMatch(candidates: string[]): string {
   if (!store.currentWord) return candidates[0] || ''
-  const target = store.currentWord.english.toLowerCase()
+  const targets = expandAlternatives(store.currentWord.english).map(t => normalizeAnswer(t))
 
-  // 1. 精确匹配
+  // 1. 精确匹配任一替代项
   for (const c of candidates) {
-    if (normalizeAnswer(c) === target) return c
+    if (targets.includes(normalizeAnswer(c))) return c
   }
 
-  // 2. 模糊匹配：编辑距离 ≤ 2 或 长度较短的词允许 ≤ 1
+  // 2. 模糊匹配：对每个替代项计算编辑距离
   let best = candidates[0] || ''
   let bestScore = Infinity
   for (const c of candidates) {
     const clean = normalizeAnswer(c)
     if (!clean) continue
-    const dist = levenshtein(clean, target)
-    const threshold = target.length <= 3 ? 1 : target.length <= 6 ? 2 : 3
-    if (dist < bestScore) { bestScore = dist; best = c }
-    // 完美匹配的变体（如首字母相同 + 长度接近）
-    if (clean[0] === target[0] && Math.abs(clean.length - target.length) <= 1 && dist <= 2) {
-      return c
+    for (const target of targets) {
+      const dist = levenshtein(clean, target)
+      if (dist < bestScore) { bestScore = dist; best = c }
+      if (clean[0] === target[0] && Math.abs(clean.length - target.length) <= 1 && dist <= 2) {
+        return c
+      }
     }
   }
 
@@ -352,10 +427,21 @@ async function handleTimeout() {
 
 function settleResult(result: AnswerResult) {
   stopCountdown()
-  lastResult.value = result
+  stopMediaRecorder()
   lastResult.value = result
   typedAnswer.value = ''
   lastWasSpell.value = isSpellFormat(rawAnswer.value)
+
+  // 语音模式计算发音得分
+  if (inputMode.value === 'voice' && rawAnswer.value) {
+    const userClean = normalizeAnswer(rawAnswer.value)
+    const correctClean = result.correct_answer.replace(/[^a-zA-Z]/g, '').toLowerCase()
+    const dist = levenshtein(userClean, correctClean)
+    pronunciationScore.value = result.is_correct
+      ? (dist === 0 ? 100 : dist === 1 ? 85 : dist === 2 ? 70 : 60)
+      : Math.max(10, 50 - dist * 10)
+  }
+
   rawAnswer.value = ''
 
   result.is_correct ? playCorrectSound() : playWrongSound()
@@ -366,11 +452,8 @@ function settleResult(result: AnswerResult) {
     speakEnglish(result.correct_answer)
   }
 
-  // 答对自动进入下一题
   if (result.is_correct) {
-    autoNextTimer.value = setTimeout(() => {
-      advanceFromResult()
-    }, 1200)
+    autoNextTimer.value = setTimeout(() => advanceFromResult(), 1200)
   }
 }
 
@@ -426,6 +509,22 @@ function onResultTap() {
       }, 350)
     }
   }
+}
+
+async function goToWord(index: number) {
+  stopCountdown()
+  recognition?.abort()
+  isRecording.value = false
+  store.goToWord(index)
+  nextTick(async () => {
+    if (store.currentWord) await speakChinese(store.currentWord.chinese)
+    startCountdown()
+    if (continuousMode.value && recognition) {
+      restartCount = 0
+      isRecording.value = true
+      recognition.start()
+    }
+  })
 }
 
 function toggleHint() { showHint.value = !showHint.value }
@@ -521,6 +620,22 @@ watch(() => store.isComplete, (done) => {
   0%,100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+/* 上一个/下一个 */
+.nav-arrows {
+  display: flex; justify-content: center; gap: 16px;
+  padding: 4px 0 0; flex-shrink: 0;
+}
+.arrow-btn {
+  width: 36px; height: 28px;
+  border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--color-surface);
+  font-size: 0.75rem; color: var(--color-text-secondary);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.arrow-btn:disabled { opacity: 0.25; cursor: default; }
+.arrow-btn:active:not(:disabled) { background: var(--color-primary-light); }
+
 .progress-num {
   font-size: 0.8rem; font-weight: 700; color: var(--color-cta);
   white-space: nowrap; min-width: 36px; text-align: right;
@@ -654,7 +769,17 @@ kbd {
 .result-en { font-size: 2.2rem; font-weight: 800; color: var(--color-text); }
 .result-yours { margin-top: 10px; font-size: 0.9rem; color: #EF4444; }
 .result-yours b { text-decoration: line-through; }
-.result-action-hint { margin-top: 16px; font-size: 0.75rem; color: var(--color-text-muted); }
+.result-score { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+.score-ring {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: conic-gradient(var(--color-primary) calc(var(--pct) * 360deg), var(--color-primary-light) 0);
+  display: flex; align-items: center; justify-content: center;
+}
+.score-num { font-size: 0.9rem; font-weight: 800; color: var(--color-text); }
+.score-label { font-size: 0.75rem; color: var(--color-text-secondary); }
+.audio-player { margin-top: 10px; width: 100%; height: 36px; border-radius: 10px; }
+.result-action-hint { margin-top: 12px; font-size: 0.75rem; color: var(--color-text-muted); }
 
 /* 完成 */
 .done-emoji { font-size: 3.5rem; }

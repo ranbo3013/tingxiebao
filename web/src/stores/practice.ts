@@ -72,6 +72,12 @@ export const usePracticeStore = defineStore('practice', () => {
     }
   }
 
+  function goToWord(index: number) {
+    if (index >= 0 && index < words.value.length) {
+      currentIndex.value = index
+    }
+  }
+
   async function finishPractice() {
     if (!sessionId.value) return
 
@@ -113,6 +119,7 @@ export const usePracticeStore = defineStore('practice', () => {
     submitAnswer,
     finishPractice,
     skipWord,
+    goToWord,
     reset,
   }
 })
