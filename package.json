@@ -1,0 +1,15 @@
+{
+  "name": "tingxiebao",
+  "version": "0.1.0",
+  "private": true,
+  "description": "听写宝 - 中小学生英文听写/听说练习工具",
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "install:all": "npm install && cd server && npm install && cd ../web && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
