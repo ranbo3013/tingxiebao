@@ -111,7 +111,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePracticeStore } from '../stores/practice'
 import type { AnswerResult } from '../api'
-import { playCorrectSound, playWrongSound, playCompleteSound, speakChinese, speakEnglish } from '../utils/sound'
+import { playCorrectSound, playWrongSound, playCompleteSound, speakChinese } from '../utils/sound'
 
 const router = useRouter()
 const store = usePracticeStore()
@@ -205,10 +205,9 @@ onMounted(() => {
     if (store.currentWord) await speakChinese(store.currentWord.chinese)
     if (store.isComplete) return
     startCountdown()
-    if (continuousMode.value && recognition) {
-      restartCount = 0
+    if (inputMode.value === 'voice') {
       isRecording.value = true
-      recognition.start()
+      recognition?.start()
     }
   })
   document.addEventListener('keydown', handleKeydown)
@@ -403,11 +402,22 @@ function levenshtein(a: string, b: string): number {
 function startCountdown() {
   stopCountdown()
   countdown.value = 15
+  
+  // 语音模式下：倒计时开始即开启麦克风
+  if (inputMode.value === 'voice' && recognition && !isRecording.value) {
+    isRecording.value = true
+    try { recognition.start() } catch(e) { console.warn('[Speech] start failed:', e.message) }
+  }
+  
   countdownTimer = setInterval(() => {
     countdown.value--
     if (countdown.value <= 0) {
+      // 倒计时结束：停止识别
+      if (inputMode.value === 'voice' && isRecording.value) {
+        recognition?.stop()
+        isRecording.value = false
+      }
       stopCountdown()
-      // 超时：提交空答案计为错误
       handleTimeout()
     }
   }, 1000)
@@ -446,12 +456,6 @@ function settleResult(result: AnswerResult) {
 
   result.is_correct ? playCorrectSound() : playWrongSound()
 
-  if (lastWasSpell.value) {
-    speakEnglish(result.correct_answer.split('').join(' '))
-  } else {
-    speakEnglish(result.correct_answer)
-  }
-
   if (result.is_correct) {
     autoNextTimer.value = setTimeout(() => advanceFromResult(), 1200)
   }
@@ -469,10 +473,9 @@ async function advanceFromResult() {
   startCountdown()
   if (inputMode.value === 'type') {
     nextTick(() => typeInput.value?.focus())
-  } else if (continuousMode.value && recognition) {
-    restartCount = 0
+  } else if (inputMode.value === 'voice') {
     isRecording.value = true
-    recognition.start()
+    recognition?.start()
   }
 }
 
@@ -519,10 +522,9 @@ async function goToWord(index: number) {
   nextTick(async () => {
     if (store.currentWord) await speakChinese(store.currentWord.chinese)
     startCountdown()
-    if (continuousMode.value && recognition) {
-      restartCount = 0
+    if (inputMode.value === 'voice') {
       isRecording.value = true
-      recognition.start()
+      recognition?.start()
     }
   })
 }
@@ -546,10 +548,9 @@ async function reviewWrong() {
     if (store.currentWord) await speakChinese(store.currentWord.chinese)
     if (store.isComplete) return
     startCountdown()
-    if (continuousMode.value && recognition) {
-      restartCount = 0
+    if (inputMode.value === 'voice') {
       isRecording.value = true
-      recognition.start()
+      recognition?.start()
     }
   })
 }
