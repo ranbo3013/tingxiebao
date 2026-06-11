@@ -20,22 +20,54 @@ function expandAbbreviations(text: string): string {
   }).join(' ')
 }
 
-/** 展开 "/" 替代项： "a/the secret" → ["a secret", "the secret"] */
+/** 展开 "/" 替代项、 "=" 等价表达和 "()" 可选部分：
+ *   "a/the secret"                     → ["a secret", "the secret"]
+ *   "hurry to do sth = do sth in hurry" → ["hurry to do something", "do something in hurry"]
+ *   "hurry up (with sth)"              → ["hurry up", "hurry up with something"]
+ */
 function expandAlternatives(text: string): string[] {
+  // 先提取 "()" 可选段（在 expandAbbreviations 之前，避免括号被吞掉）
+  const optionalMap: string[] = []
+  text = text.replace(/\(([^)]+)\)/g, (_, content) => {
+    const idx = optionalMap.length
+    optionalMap.push(content)
+    return ` [OPTIONAL:${idx}] `
+  })
+
+  // 再展开缩写
   text = expandAbbreviations(text)
-  const tokens = text.split(/\s+/);
-  const parts = tokens.map(t => t.includes('/') ? t.split('/') : [t]);
 
   function combine(arrays: string[][], index: number, current: string[]): string[] {
-    if (index === arrays.length) return [current.join(' ')];
-    const results: string[] = [];
+    if (index === arrays.length) return [current.join(' ')]
+    const results: string[] = []
     for (const item of arrays[index]) {
-      results.push(...combine(arrays, index + 1, [...current, item]));
+      results.push(...combine(arrays, index + 1, [...current, item]))
     }
-    return results;
+    return results
   }
 
-  return combine(parts, 0, []);
+  // 按 "=" 拆分等价表达，每部分分别处理
+  const equalParts = text.split('=').map(s => s.trim())
+  const allResults: string[] = []
+
+  for (const eqPart of equalParts) {
+    const tokens = eqPart.split(/\s+/)
+    const parts = tokens.map(t => {
+      // 处理可选部分标记
+      const optMatch = t.match(/^\[OPTIONAL:(\d+)\]$/)
+      if (optMatch) {
+        const content = optionalMap[Number(optMatch[1])]
+        const expanded = expandAbbreviations(content)
+        // 可选：带或不带
+        return [expanded, '']
+      }
+      return t.includes('/') ? t.split('/') : [t]
+    })
+    allResults.push(...combine(parts, 0, []))
+  }
+
+  // 清理：去除首尾空格、合并多余空格、过滤空结果
+  return allResults.map(r => r.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ')).filter(Boolean)
 }
 
 // POST /api/practice/start - Start a new practice session
@@ -124,7 +156,7 @@ router.post('/answer', (req: Request, res: Response) => {
     return res.status(404).json({ error: '单词不存在' });
   }
 
-  // Check if answer matches — support "/" alternatives like "a/the secret"
+  // Check if answer matches — support "/" alternatives, "=" equivalents, and "()" optional parts
   const userClean = String(user_answer).replace(/[^a-zA-Z]/g, '').toLowerCase();
   const isCorrect = expandAlternatives(word.english).some(
     alt => alt.replace(/[^a-zA-Z]/g, '').toLowerCase() === userClean
