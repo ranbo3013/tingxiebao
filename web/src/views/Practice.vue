@@ -117,6 +117,7 @@ interface SpeechRecognition {
   continuous: boolean
   interimResults: boolean
   lang: string
+  maxAlternatives: number
   start(): void
   stop(): void
   abort(): void
@@ -181,14 +182,14 @@ onMounted(() => {
   if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     recognition = new SR()
-    recognition.lang = 'en-US'
-    recognition.interimResults = false
-    recognition.maxAlternatives = 5
-    recognition.continuous = false
-    recognition.onresult = (e: SpeechRecognitionEvent) => {
+    recognition!.lang = 'en-US'
+    recognition!.interimResults = false
+    recognition!.maxAlternatives = 5
+    recognition!.continuous = false
+    recognition!.onresult = (e: SpeechRecognitionEvent) => {
       if (e.results.length > 0) handleVoiceResult(e.results[0])
     }
-    recognition.onerror = (e: any) => {
+    recognition!.onerror = (e: any) => {
       console.error('[Speech]', e.error, e.message)
       isRecording.value = false
       if (e.error === 'not-allowed') alert('请允许浏览器使用麦克风权限')
@@ -196,7 +197,7 @@ onMounted(() => {
       else if (e.error === 'network') alert('语音识别需要网络连接')
       else if (e.error !== 'aborted') alert('语音识别错误: ' + e.error)
     }
-    recognition.onend = () => {
+    recognition!.onend = () => {
       isRecording.value = false
       // 自动重开：仅在连续模式 + 等待输入时，且限制重启次数防止死循环
       if (!showingResult.value && !store.isComplete && inputMode.value === 'voice' && restartCount < 3) {
