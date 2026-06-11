@@ -46,6 +46,17 @@ jobs:
         working-directory: web
         run: npm run build
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            server/dist/
+            server/package.json
+            server/package-lock.json
+            web/dist/
+          retention-days: 1
+
   deploy:
     name: Deploy to ECS
     needs: build
@@ -53,7 +64,24 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Deploy to ECS
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: deploy/
+
+      - name: SCP to ECS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: ${{ secrets.ECS_SSH_PORT || 22 }}
+          source: "deploy/"
+          target: ${{ secrets.ECS_DEPLOY_PATH }}/.deploy-tmp
+          strip_components: 1
+
+      - name: Install & Restart on ECS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ECS_HOST }}
@@ -64,44 +92,45 @@ jobs:
             set -e
 
             DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
+            TMP="$DEPLOY_PATH/.deploy-tmp"
 
-            # Clone or pull (ECS in China, try direct then mirror)
-            REPO_URL="https://github.com/${{ github.repository }}.git"
-            if [ -d "$DEPLOY_PATH/.git" ]; then
-              cd "$DEPLOY_PATH"
-              git remote set-url origin "$REPO_URL" 2>/dev/null || true
-              git fetch origin --depth=1 || git fetch https://ghproxy.com/$REPO_URL --depth=1
-              git checkout main
-              git reset --hard origin/main
-            else
-              git clone --depth=1 "$REPO_URL" "$DEPLOY_PATH" 2>/dev/null || \
-              git clone --depth=1 "https://ghproxy.com/$REPO_URL" "$DEPLOY_PATH"
-              cd "$DEPLOY_PATH"
+            echo "=== Deploy from $TMP to $DEPLOY_PATH ==="
+
+            # Backup existing data
+            if [ -d "$DEPLOY_PATH/server/data" ]; then
+              echo "[backup] saving data"
+              cp -a "$DEPLOY_PATH/server/data" /tmp/tingxiebao-data
             fi
 
-            # Backup data
-            if [ -d "server/data" ]; then
-              cp -a server/data /tmp/tingxiebao-data-backup
-            fi
+            # Move new files in
+            echo "[deploy] replacing files"
+            rm -rf "$DEPLOY_PATH/server/dist" "$DEPLOY_PATH/web/dist" "$DEPLOY_PATH/server/package.json" "$DEPLOY_PATH/server/package-lock.json"
+            mkdir -p "$DEPLOY_PATH/server" "$DEPLOY_PATH/web"
 
-            # Use China npm mirror for speed
-            npm config set registry https://registry.npmmirror.com
-
-            # Install & build
-            npm ci
-            cd server && npm ci && npm run build && cd ..
-            cd web && npm ci && npm run build && cd ..
+            cp -a "$TMP/server/dist" "$DEPLOY_PATH/server/"
+            cp -a "$TMP/server/package.json" "$TMP/server/package-lock.json" "$DEPLOY_PATH/server/"
+            cp -a "$TMP/web/dist" "$DEPLOY_PATH/web/"
+            rm -rf "$TMP"
 
             # Restore data
-            if [ -d /tmp/tingxiebao-data-backup ]; then
-              mkdir -p server/data
-              cp -a /tmp/tingxiebao-data-backup/. server/data/
-              rm -rf /tmp/tingxiebao-data-backup
+            if [ -d /tmp/tingxiebao-data ]; then
+              echo "[restore] data"
+              mkdir -p "$DEPLOY_PATH/server/data"
+              cp -a /tmp/tingxiebao-data/. "$DEPLOY_PATH/server/data/"
+              rm -rf /tmp/tingxiebao-data
             fi
 
+            # Install production deps
+            echo "[install] server deps"
+            cd "$DEPLOY_PATH/server"
+            npm config set registry https://registry.npmmirror.com
+            npm ci --omit=dev
+
             # Restart
+            echo "[restart] pm2"
             export PATH="$PATH:/usr/local/bin:$HOME/.npm-global/bin"
             which pm2 || npm i -g pm2
-            cd server
             pm2 restart tingxiebao-server || pm2 start dist/index.js --name tingxiebao-server
             pm2 save
+
+            echo "=== Done ==="
