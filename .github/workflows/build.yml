@@ -101,7 +101,7 @@ jobs:
 
             DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
             BUILD_TMP="$DEPLOY_PATH/.build-tmp"
-            FINAL_PATH="$DEPLOY_PATH/tingxiebao"
+            FINAL_PATH="$DEPLOY_PATH"
 
             # Ensure data directory persists across deploys
             if [ -d "$FINAL_PATH/server/data" ]; then
