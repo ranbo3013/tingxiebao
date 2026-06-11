@@ -189,16 +189,24 @@ onMounted(() => {
     recognition!.onresult = (e: SpeechRecognitionEvent) => {
       if (e.results.length > 0) handleVoiceResult(e.results[0])
     }
+    let micPermissionDenied = false
+
     recognition!.onerror = (e: any) => {
       console.error('[Speech]', e.error, e.message)
       isRecording.value = false
-      if (e.error === 'not-allowed') alert('请允许浏览器使用麦克风权限')
-      else if (e.error === 'no-speech') { /* 静默重试 */ }
+      if (e.error === 'not-allowed') {
+        if (!micPermissionDenied) {
+          micPermissionDenied = true
+          alert('请允许浏览器使用麦克风权限\n\n点击地址栏左侧的锁图标 → 开启麦克风权限后刷新页面')
+        }
+      } else if (e.error === 'no-speech') { /* 静默重试 */ }
       else if (e.error === 'network') alert('语音识别需要网络连接')
       else if (e.error !== 'aborted') alert('语音识别错误: ' + e.error)
     }
     recognition!.onend = () => {
       isRecording.value = false
+      // 权限被拒绝时不自动重试
+      if (micPermissionDenied) return
       // 自动重开：仅在连续模式 + 等待输入时，且限制重启次数防止死循环
       if (!showingResult.value && !store.isComplete && inputMode.value === 'voice' && restartCount < 3) {
         setTimeout(() => {
@@ -218,10 +226,7 @@ onMounted(() => {
     if (store.currentWord) await speakChinese(store.currentWord.chinese)
     if (store.isComplete) return
     startCountdown()
-    if (inputMode.value === 'voice') {
-      isRecording.value = true
-      recognition?.start()
-    }
+    // 首次不自动开麦，等用户手动点击授权麦克风
   })
   document.addEventListener('keydown', handleKeydown)
 })
