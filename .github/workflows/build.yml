@@ -46,22 +46,6 @@ jobs:
         working-directory: web
         run: npm run build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: |
-            server/dist/
-            web/dist/
-            server/src/
-            server/package.json
-            server/package-lock.json
-            web/package.json
-            web/package-lock.json
-            package.json
-            package-lock.json
-          retention-days: 7
-
   deploy:
     name: Deploy to ECS
     needs: build
@@ -69,27 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: deploy-build/
-
-      - name: Deploy to ECS via SSH
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          port: ${{ secrets.ECS_SSH_PORT || 22 }}
-          source: "deploy-build/"
-          target: ${{ secrets.ECS_DEPLOY_PATH }}/.build-tmp
-          strip_components: 1
-
-      - name: Deploy and restart
+      - name: Deploy to ECS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ECS_HOST }}
@@ -100,28 +64,38 @@ jobs:
             set -e
 
             DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
-            BUILD_TMP="$DEPLOY_PATH/.build-tmp"
-            FINAL_PATH="$DEPLOY_PATH"
 
-            # Ensure data directory persists across deploys
-            if [ -d "$FINAL_PATH/server/data" ]; then
-              mkdir -p "$BUILD_TMP/server"
-              cp -a "$FINAL_PATH/server/data" "$BUILD_TMP/server/data"
+            # Clone or pull
+            if [ -d "$DEPLOY_PATH/.git" ]; then
+              cd "$DEPLOY_PATH"
+              git fetch origin
+              git checkout main
+              git pull origin main
+            else
+              git clone https://github.com/${{ github.repository }}.git "$DEPLOY_PATH"
+              cd "$DEPLOY_PATH"
             fi
 
-            # Remove old release and move new one into place
-            rm -rf "$FINAL_PATH"
-            mv "$BUILD_TMP" "$FINAL_PATH"
+            # Backup data
+            if [ -d "server/data" ]; then
+              cp -a server/data /tmp/tingxiebao-data-backup
+            fi
 
-            cd "$FINAL_PATH/server"
+            # Install & build
+            npm ci
+            cd server && npm ci && npm run build && cd ..
+            cd web && npm ci && npm run build && cd ..
 
-            # Install production dependencies (artifact already built)
-            npm ci --omit=dev
+            # Restore data
+            if [ -d /tmp/tingxiebao-data-backup ]; then
+              mkdir -p server/data
+              cp -a /tmp/tingxiebao-data-backup/. server/data/
+              rm -rf /tmp/tingxiebao-data-backup
+            fi
 
-            # Ensure pm2 is available
-            export PATH="$PATH:$(npm root -g)/../.npm-global/bin:$(npm bin -g 2>/dev/null || echo /usr/local/bin)"
+            # Restart
+            export PATH="$PATH:/usr/local/bin:$HOME/.npm-global/bin"
             which pm2 || npm i -g pm2
-
-            # Restart with PM2
+            cd server
             pm2 restart tingxiebao-server || pm2 start dist/index.js --name tingxiebao-server
             pm2 save
