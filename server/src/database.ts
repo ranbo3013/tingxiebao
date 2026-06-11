@@ -50,7 +50,7 @@ export function initializeDatabase(): void {
       wrong_count INTEGER NOT NULL DEFAULT 0,
       started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       completed_at DATETIME,
-      FOREIGN KEY (word_list_id) REFERENCES word_lists(id)
+      FOREIGN KEY (word_list_id) REFERENCES word_lists(id) ON DELETE CASCADE
     );
 
     -- Individual word results within a practice session

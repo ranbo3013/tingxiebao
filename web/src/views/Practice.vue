@@ -111,7 +111,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePracticeStore } from '../stores/practice'
 import type { AnswerResult } from '../api'
-import { playCorrectSound, playWrongSound, playCompleteSound, speakChinese } from '../utils/sound'
+import { playCorrectSound, playWrongSound, playCompleteSound, speakChinese, speakEnglish } from '../utils/sound'
 
 const router = useRouter()
 const store = usePracticeStore()
@@ -454,7 +454,13 @@ function settleResult(result: AnswerResult) {
 
   rawAnswer.value = ''
 
-  result.is_correct ? playCorrectSound() : playWrongSound()
+  if (result.is_correct) {
+    playCorrectSound()
+  } else {
+    playWrongSound()
+    // 答错时朗读正确答案，帮助学生纠正
+    speakEnglish(result.correct_answer)
+  }
 
   if (result.is_correct) {
     autoNextTimer.value = setTimeout(() => advanceFromResult(), 1200)

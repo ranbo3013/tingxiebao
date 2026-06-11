@@ -1,0 +1,126 @@
+name: Build & Deploy to ECS
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Type check server
+        working-directory: server
+        run: npx tsc --noEmit
+
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Build web frontend
+        working-directory: web
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            server/dist/
+            web/dist/
+            server/src/
+            server/package.json
+            server/package-lock.json
+            web/package.json
+            web/package-lock.json
+            package.json
+            package-lock.json
+          retention-days: 7
+
+  deploy:
+    name: Deploy to ECS
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: deploy-build/
+
+      - name: Deploy to ECS via SSH
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: ${{ secrets.ECS_SSH_PORT || 22 }}
+          source: "deploy-build/"
+          target: ${{ secrets.ECS_DEPLOY_PATH }}/.build-tmp
+          strip_components: 1
+
+      - name: Deploy and restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: ${{ secrets.ECS_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
+            BUILD_TMP="\$DEPLOY_PATH/.build-tmp"
+            FINAL_PATH="\$DEPLOY_PATH/tingxiebao"
+
+            # Ensure data directory persists across deploys
+            if [ -d "\$FINAL_PATH/server/data" ]; then
+              mkdir -p "\$BUILD_TMP/server"
+              cp -a "\$FINAL_PATH/server/data" "\$BUILD_TMP/server/data"
+            fi
+
+            # Remove old release and move new one into place
+            rm -rf "\$FINAL_PATH"
+            mv "\$BUILD_TMP" "\$FINAL_PATH"
+
+            cd "\$FINAL_PATH/server"
+
+            # Install production dependencies only
+            npm ci --omit=dev
+
+            # Rebuild if needed (fast if nothing changed)
+            npm run build
+
+            # Restart with PM2
+            pm2 restart tingxiebao-server || pm2 start dist/index.js --name tingxiebao-server
+            pm2 save
