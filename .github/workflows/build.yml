@@ -84,6 +84,9 @@ jobs:
               cp -a server/data /tmp/tingxiebao-data-backup
             fi
 
+            # Use China npm mirror for speed
+            npm config set registry https://registry.npmmirror.com
+
             # Install & build
             npm ci
             cd server && npm ci && npm run build && cd ..
