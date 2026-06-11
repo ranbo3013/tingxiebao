@@ -112,6 +112,8 @@ jobs:
 
             # Restart server
             cd server
+            export PATH="$PATH:$(npm root -g)/../.npm-global/bin:/usr/local/bin"
+            which pm2 || npm i -g pm2
             pm2 restart tingxiebao-server || pm2 start dist/index.js --name tingxiebao-server
             pm2 save
 
