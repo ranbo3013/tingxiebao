@@ -70,67 +70,56 @@ jobs:
           name: build-output
           path: deploy/
 
-      - name: SCP to ECS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          port: ${{ secrets.ECS_SSH_PORT || 22 }}
-          source: "deploy/"
-          target: ${{ secrets.ECS_DEPLOY_PATH }}/.deploy-tmp
-          strip_components: 1
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ECS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "Host ecs
+            HostName ${{ secrets.ECS_HOST }}
+            User ${{ secrets.ECS_USER }}
+            Port ${{ secrets.ECS_SSH_PORT || 22 }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          echo "=== SSH config ==="
+          cat ~/.ssh/config
+          echo "=== Testing connection ==="
+          ssh -v ecs "echo SSH_OK" 2>&1 | tail -30
 
-      - name: Install & Restart on ECS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          port: ${{ secrets.ECS_SSH_PORT || 22 }}
-          script: |
-            set -e
+      - name: SCP files
+        run: |
+          cd deploy
+          tar czf ../deploy.tar.gz .
+          cd ..
+          echo "=== Uploading $(du -h deploy.tar.gz | cut -f1) ==="
+          scp -v deploy.tar.gz ecs:/tmp/tingxiebao-deploy.tar.gz 2>&1 | tail -20
+          echo "=== SCP done ==="
 
+      - name: Install & Restart
+        run: |
+          ssh ecs bash << 'REMOTE'
+            set -ex
             DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
-            TMP="$DEPLOY_PATH/.deploy-tmp"
+            mkdir -p "$DEPLOY_PATH"
 
-            echo "=== Deploy from $TMP to $DEPLOY_PATH ==="
+            echo "=== Extracting ==="
+            tar -xzf /tmp/tingxiebao-deploy.tar.gz -C "$DEPLOY_PATH"
+            rm /tmp/tingxiebao-deploy.tar.gz
+            ls -la "$DEPLOY_PATH/server/dist/" | head -5
+            ls -la "$DEPLOY_PATH/web/dist/" | head -5
 
-            # Backup existing data
-            if [ -d "$DEPLOY_PATH/server/data" ]; then
-              echo "[backup] saving data"
-              cp -a "$DEPLOY_PATH/server/data" /tmp/tingxiebao-data
-            fi
-
-            # Move new files in
-            echo "[deploy] replacing files"
-            rm -rf "$DEPLOY_PATH/server/dist" "$DEPLOY_PATH/web/dist" "$DEPLOY_PATH/server/package.json" "$DEPLOY_PATH/server/package-lock.json"
-            mkdir -p "$DEPLOY_PATH/server" "$DEPLOY_PATH/web"
-
-            cp -a "$TMP/server/dist" "$DEPLOY_PATH/server/"
-            cp -a "$TMP/server/package.json" "$TMP/server/package-lock.json" "$DEPLOY_PATH/server/"
-            cp -a "$TMP/web/dist" "$DEPLOY_PATH/web/"
-            rm -rf "$TMP"
-
-            # Restore data
-            if [ -d /tmp/tingxiebao-data ]; then
-              echo "[restore] data"
-              mkdir -p "$DEPLOY_PATH/server/data"
-              cp -a /tmp/tingxiebao-data/. "$DEPLOY_PATH/server/data/"
-              rm -rf /tmp/tingxiebao-data
-            fi
-
-            # Install production deps
-            echo "[install] server deps"
+            echo "[install]"
             cd "$DEPLOY_PATH/server"
             npm config set registry https://registry.npmmirror.com
             npm ci --omit=dev
 
-            # Restart
-            echo "[restart] pm2"
+            echo "[restart]"
             export PATH="$PATH:/usr/local/bin:$HOME/.npm-global/bin"
             which pm2 || npm i -g pm2
             pm2 restart tingxiebao-server || pm2 start dist/index.js --name tingxiebao-server
             pm2 save
 
             echo "=== Done ==="
+          REMOTE
