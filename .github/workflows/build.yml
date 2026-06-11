@@ -100,20 +100,20 @@ jobs:
             set -e
 
             DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
-            BUILD_TMP="\$DEPLOY_PATH/.build-tmp"
-            FINAL_PATH="\$DEPLOY_PATH/tingxiebao"
+            BUILD_TMP="$DEPLOY_PATH/.build-tmp"
+            FINAL_PATH="$DEPLOY_PATH/tingxiebao"
 
             # Ensure data directory persists across deploys
-            if [ -d "\$FINAL_PATH/server/data" ]; then
-              mkdir -p "\$BUILD_TMP/server"
-              cp -a "\$FINAL_PATH/server/data" "\$BUILD_TMP/server/data"
+            if [ -d "$FINAL_PATH/server/data" ]; then
+              mkdir -p "$BUILD_TMP/server"
+              cp -a "$FINAL_PATH/server/data" "$BUILD_TMP/server/data"
             fi
 
             # Remove old release and move new one into place
-            rm -rf "\$FINAL_PATH"
-            mv "\$BUILD_TMP" "\$FINAL_PATH"
+            rm -rf "$FINAL_PATH"
+            mv "$BUILD_TMP" "$FINAL_PATH"
 
-            cd "\$FINAL_PATH/server"
+            cd "$FINAL_PATH/server"
 
             # Install production dependencies (artifact already built)
             npm ci --omit=dev

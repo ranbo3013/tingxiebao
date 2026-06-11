@@ -2,7 +2,10 @@
   <div class="home">
     <!-- 吉祥物 + Hero -->
     <div class="hero animate-fade-in-up">
-      <h1 class="hero-title"><span class="mascot-hero">🐱</span> 听写宝</h1>
+      <div class="hero-title-row">
+        <span class="mascot-hero">🐱</span>
+        <h1 class="hero-title">听写宝</h1>
+      </div>
       <p class="hero-subtitle">一起学单词吧！ 🌟</p>
     </div>
 
@@ -149,11 +152,16 @@ async function startPractice(mode: 'full' | 'review') {
   text-align: center;
   padding: 24px 0 20px;
 }
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
 .mascot-hero {
-  font-size: 1.8rem;
-  display: inline;
-  vertical-align: middle;
+  font-size: 2rem;
   animation: bounce 2s ease-in-out infinite;
+  flex-shrink: 0;
 }
 .hero-title {
   font-size: 2rem;
