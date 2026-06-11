@@ -93,10 +93,10 @@ jobs:
               echo "Data backed up to \$BACKUP_DATA"
             fi
 
-            # Install dependencies (production only)
-            npm ci --omit=dev
-            cd server && npm ci --omit=dev && cd ..
-            cd web && npm ci --omit=dev && cd ..
+            # Install dependencies
+            npm ci
+            cd server && npm ci && cd ..
+            cd web && npm ci && cd ..
 
             # Rebuild
             cd server && npm run build && cd ..
