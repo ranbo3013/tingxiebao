@@ -56,7 +56,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getPracticeDetail, getPracticeHistory, startPractice } from '../api'
+import { getPracticeDetail, getPracticeHistory } from '../api'
 import { usePracticeStore } from '../stores/practice'
 
 const route = useRoute()

@@ -89,9 +89,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getWordLists, getPracticeHistory, startPractice as apiStartPractice } from '../api'
+import { getWordLists, getPracticeHistory } from '../api'
 import type { WordList } from '../api'
 import { usePracticeStore } from '../stores/practice'
 
@@ -104,14 +104,6 @@ const showModeDialog = ref(false)
 const selectedList = ref<WordList | null>(null)
 const hasHistory = ref(false)
 
-const features = [
-  { icon: '🗣️', desc: '中文播报' },
-  { icon: '🎤', desc: '语音回答' },
-  { icon: '⌨️', desc: '打字输入' },
-  { icon: '🔤', desc: '拼读模式' },
-  { icon: '🔄', desc: '错题重练' },
-  { icon: '📤', desc: '上传词表' },
-]
 
 onMounted(async () => {
   try {

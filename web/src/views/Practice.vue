@@ -106,6 +106,20 @@
   </div>
 </template>
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+declare var SpeechRecognition: { new(): {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+}; };
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -406,7 +420,7 @@ function startCountdown() {
   // 语音模式下：倒计时开始即开启麦克风
   if (inputMode.value === 'voice' && recognition && !isRecording.value) {
     isRecording.value = true
-    try { recognition.start() } catch(e) { console.warn('[Speech] start failed:', e.message) }
+    try { recognition.start() } catch(e: any) { console.warn('[Speech] start failed:', e.message) }
   }
   
   countdownTimer = setInterval(() => {
