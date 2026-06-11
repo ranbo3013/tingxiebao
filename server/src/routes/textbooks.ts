@@ -11,12 +11,13 @@ router.get('/', (_req: Request, res: Response) => {
 
 // GET /api/textbooks/:version/grades - 获取某版本的年级列表
 router.get('/:version/grades', (req: Request, res: Response) => {
-  const textbook = TEXTBOOKS.find(t => t.version === req.params.version);
+  const version = req.params.version as string;
+  const textbook = TEXTBOOKS.find(t => t.version === version);
   if (!textbook) {
     return res.status(404).json({ error: '教材版本不存在' });
   }
 
-  const units = getUnitsByVersion(req.params.version);
+  const units = getUnitsByVersion(version);
   // 从数据中提取可用的年级
   const grades = [...new Set(units.map(u => u.grade))];
 
@@ -25,7 +26,7 @@ router.get('/:version/grades', (req: Request, res: Response) => {
 
 // GET /api/textbooks/:version/units?grade=八年级 - 获取某版本某年级的所有单元
 router.get('/:version/units', (req: Request, res: Response) => {
-  const { version } = req.params;
+  const version = req.params.version as string;
   const { grade } = req.query;
 
   const textbook = TEXTBOOKS.find(t => t.version === version);
@@ -122,7 +123,7 @@ router.post('/import', (req: Request, res: Response) => {
     GROUP BY wl.id
   `).get(result);
 
-  res.status(201).json({ data: { ...created, existed: false } });
+  res.status(201).json({ data: { ...(created as Record<string, unknown>), existed: false } });
 });
 
 export default router;
