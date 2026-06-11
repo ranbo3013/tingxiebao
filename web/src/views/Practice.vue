@@ -106,26 +106,24 @@
   </div>
 </template>
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-declare var SpeechRecognition: { new(): {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
-  onend: (() => void) | null;
-}; };
-/* eslint-enable @typescript-eslint/no-unused-vars */
-
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePracticeStore } from '../stores/practice'
 import type { AnswerResult } from '../api'
 import { playCorrectSound, playWrongSound, playCompleteSound, speakChinese, speakEnglish } from '../utils/sound'
+
+interface SpeechRecognition {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start(): void
+  stop(): void
+  abort(): void
+  onresult: ((event: any) => void) | null
+  onerror: ((event: any) => void) | null
+  onend: (() => void) | null
+}
 
 const router = useRouter()
 const store = usePracticeStore()
