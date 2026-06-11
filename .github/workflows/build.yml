@@ -65,14 +65,17 @@ jobs:
 
             DEPLOY_PATH="${{ secrets.ECS_DEPLOY_PATH }}"
 
-            # Clone or pull
+            # Clone or pull (ECS in China, try direct then mirror)
+            REPO_URL="https://github.com/${{ github.repository }}.git"
             if [ -d "$DEPLOY_PATH/.git" ]; then
               cd "$DEPLOY_PATH"
-              git fetch origin
+              git remote set-url origin "$REPO_URL" 2>/dev/null || true
+              git fetch origin --depth=1 || git fetch https://ghproxy.com/$REPO_URL --depth=1
               git checkout main
-              git pull origin main
+              git reset --hard origin/main
             else
-              git clone https://github.com/${{ github.repository }}.git "$DEPLOY_PATH"
+              git clone --depth=1 "$REPO_URL" "$DEPLOY_PATH" 2>/dev/null || \
+              git clone --depth=1 "https://ghproxy.com/$REPO_URL" "$DEPLOY_PATH"
               cd "$DEPLOY_PATH"
             fi
 

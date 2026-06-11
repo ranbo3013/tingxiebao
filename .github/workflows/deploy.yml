@@ -70,16 +70,19 @@ jobs:
             GIT_BRANCH="${{ github.event.inputs.target_branch }}"
             KEEP_DATA="${{ github.event.inputs.keep_data }}"
 
-            # Clone or pull the repository
+            # Clone or pull (ECS in China, try direct then mirror)
+            REPO_URL="https://github.com/${{ github.repository }}.git"
             if [ -d "$DEPLOY_PATH/.git" ]; then
               cd "$DEPLOY_PATH"
-              git fetch origin
+              git remote set-url origin "$REPO_URL" 2>/dev/null || true
+              git fetch origin --depth=1 || git fetch https://ghproxy.com/$REPO_URL --depth=1
               git checkout "$GIT_BRANCH"
-              git pull origin "$GIT_BRANCH"
+              git reset --hard "origin/$GIT_BRANCH"
             else
-              git clone git@github.com:${{ github.repository }}.git "$DEPLOY_PATH"
+              git clone --depth=1 "$REPO_URL" "$DEPLOY_PATH" 2>/dev/null || \
+              git clone --depth=1 "https://ghproxy.com/$REPO_URL" "$DEPLOY_PATH"
               cd "$DEPLOY_PATH"
-              git checkout "$GIT_BRANCH"
+              git checkout "$GIT_BRANCH" 2>/dev/null || true
             fi
 
             cd "$DEPLOY_PATH"
