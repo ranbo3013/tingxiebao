@@ -187,7 +187,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getWordLists, uploadWordList, deleteWordList, getPracticeHistory, startPractice,
+import { getWordLists, uploadWordList, deleteWordList, getPracticeHistory,
   getTextbooks, getTextbookGrades, getTextbookUnits, importTextbookUnit } from '../api'
 import type { WordList, TextbookInfo, TextbookUnitSummary } from '../api'
 import { usePracticeStore } from '../stores/practice'
