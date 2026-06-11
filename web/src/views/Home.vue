@@ -2,8 +2,7 @@
   <div class="home">
     <!-- 吉祥物 + Hero -->
     <div class="hero animate-fade-in-up">
-      <div class="mascot-hero">🐱</div>
-      <h1 class="hero-title">听写宝</h1>
+      <h1 class="hero-title"><span class="mascot-hero">🐱</span> 听写宝</h1>
       <p class="hero-subtitle">一起学单词吧！ 🌟</p>
     </div>
 
@@ -151,19 +150,18 @@ async function startPractice(mode: 'full' | 'review') {
   padding: 24px 0 20px;
 }
 .mascot-hero {
-  font-size: 4.5rem;
-  display: inline-block;
+  font-size: 1.8rem;
+  display: inline;
+  vertical-align: middle;
   animation: bounce 2s ease-in-out infinite;
-  filter: drop-shadow(0 6px 12px rgba(249,115,22,0.2));
 }
 .hero-title {
-  font-size: 2.2rem;
+  font-size: 2rem;
   font-weight: 800;
   background: linear-gradient(135deg, #F97316, #FBBF24);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin-top: -8px;
 }
 .hero-subtitle {
   font-size: 1rem;
